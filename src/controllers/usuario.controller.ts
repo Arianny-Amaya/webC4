@@ -1,3 +1,5 @@
+import { authenticate } from '@loopback/authentication';
+import { service } from '@loopback/core';
 import {
   Count,
   CountSchema,
@@ -16,16 +18,50 @@ import {
   del,
   requestBody,
   response,
+  HttpErrors,
 } from '@loopback/rest';
-import {Usuario} from '../models';
+import {Credenciales, Usuario} from '../models';
 import {UsuarioRepository} from '../repositories';
+import { AutenticacionService } from '../services';
+const fetch = require('node-fetch');      //7. despues de istalado el paquete se importa
 
+//aqui si deseo inyectar todos los permisos de rol @authenticate('admin')
 export class UsuarioController {
   constructor(
     @repository(UsuarioRepository)
     public usuarioRepository : UsuarioRepository,
+    @service(AutenticacionService)                       //3. inyectamos el servicio AutenticacionServices para poder llamar los metodos desde aqui
+    public servicioAutenticacion: AutenticacionService    // se coloca un servicio
   ) {}
+  
+  //en caso de saltar un modulo @authenticate.skip()
+  @post('/identificarUsuario', {       //ac 11 creamos una nueva ruta
+    responses:{
+      '200':{
+        description: 'Identificacion de ususarios'
+      } 
+    }
+  })
+  async identificarUsuario(
+  @requestBody() credenciales : Credenciales         //despues de creado el model, se importa como aparece en la linea 21 
+  ){
+    let p = await this.servicioAutenticacion.IdentificarUsuario(credenciales.usuario, credenciales.contrasena);
+    if(p){
+      let token = this.servicioAutenticacion.GenerarTokenJWT(p);
+      return{
+        datos:{
+          nombre: p.nombre,
+          correo: p.correo,
+          id: p.id
+        },
+        tk: token 
+      }
+    }else{
+      throw new HttpErrors[401]('Datos invalidos');
+    }
+  }
 
+  //@authenticate('admin')      //at4 aqui inyectamos la parte del rol, donde solo el administrador tiene derecho a crear un usuario
   @post('/usuarios')
   @response(200, {
     description: 'Usuario model instance',
@@ -44,7 +80,21 @@ export class UsuarioController {
     })
     usuario: Omit<Usuario, 'id'>,
   ): Promise<Usuario> {
-    return this.usuarioRepository.create(usuario);
+    let contrasena = this.servicioAutenticacion.GenerarContrasena();                    //4. definir contrasena
+    let contrasenaCifrada = this.servicioAutenticacion.CifrarContrasena(contrasena);    //5.  devuelve contrasena cifrada   
+    usuario.contrasena = contrasenaCifrada;                                             //6.  a usuario asigno contrasena cifrada
+    let p = await this.usuarioRepository.create(usuario);                              //0. como se hace una funcion asincrona, entonces se hace esperar. Es modificada la que esta debajo por ésta.
+    //return this.usuarioRepository.create(usuario);                                   y se intala unm paquete (crypto -js : encriptado de las claves) y el password -generator: genera las claves). En services/autentication.service.ts
+                                                                        
+    //8.  Notificar al usuario  (abrir anaconda-spider)
+    let correo_destino = usuario.correo;
+    let asunto = 'Datos de registro en la paltaforma0';
+    let contenido = `Hola ${usuario.nombre} bienvenido a la plataforma de macotas, su usuario es ${usuario.correo} y su contraseña es ${contrasena}`
+    fetch(`http://127.0.0.1:5000/email?correo_destino=${correo_destino}&asunto=${asunto}&contenido=${contenido}`)       // par su funcion se debe instalar paquete node-fetch 
+      .then((data:any)=>{                                                                                               // que permite llamado de url externas, para que co nsuma un servicio en el otro servidor
+        console.log(data);                                                                                              // que fue creado con Spyder(servicio de correo)
+      })
+      return p;
   }
 
   @get('/usuarios/count')

@@ -9,6 +9,10 @@ import {RestApplication} from '@loopback/rest';
 import {ServiceMixin} from '@loopback/service-proxy';
 import path from 'path';
 import {MySequence} from './sequence';
+import { AuthenticationComponent, registerAuthenticationStrategy } from '@loopback/authentication';
+import { EstrategiaAdministrador } from './strategies/admin.strategy';
+import { EstrategiaAsesor } from './strategies/asesor.strategy';
+import { EstrategiaUsuario } from './strategies/usuario.strategy';
 
 export {ApplicationConfig};
 
@@ -40,5 +44,13 @@ export class MascotasApplicacion extends BootMixin(
         nested: true,
       },
     };
+
+    //van los 3 roles
+    registerAuthenticationStrategy(this, EstrategiaAdministrador);  //at3 
+    registerAuthenticationStrategy(this, EstrategiaAsesor);  //at3
+    registerAuthenticationStrategy(this, EstrategiaUsuario);  //at3
+
+    this.component(AuthenticationComponent);
+
   }
 }
